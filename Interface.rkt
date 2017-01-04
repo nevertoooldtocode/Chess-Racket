@@ -10,8 +10,8 @@
       (map (lambda (row)
              (map (lambda (column)
                     (send pos occupied? (make-object square% column row)))
-                  (enumerate-interval 1 8)))
-           (enumerate-interval 2 9)))
+                  (enumerate-interval FIRSTCOLUMN LASTCOLUMN)))
+           (enumerate-interval FIRSTROW LASTROW)))
     
     (define (display-board pos)
       (for-each (lambda (row)
@@ -86,7 +86,7 @@
                    (r (get-field row (get-field square piece))))
                (send dc draw-text (send piece ascii-representation)
                      (- c .65)
-                     (- 9.2 r))))
+                     (- LASTROW r -0.1))))
            (send pos white-pieces))
           (send dc set-text-foreground text-foreground))
         
@@ -98,7 +98,7 @@
                    (r (get-field row (get-field square piece))))
                (send dc draw-text (send piece ascii-representation)
                      (- c .65)
-                     (- 9.2 r))))
+                     (- LASTROW r -0.1))))
            (send pos black-pieces)))
         
         (define (draw-board dc)
@@ -132,8 +132,8 @@
           (send dc set-brush "LemonChiffon" 'solid)
           (for-each (lambda (square)
                       (send dc draw-rectangle
-                            (sub1 (get-field col square))
-                            (- 9 (get-field row square))
+                            (- (get-field col square) FIRSTCOLUMN)
+                            (- LASTROW (get-field row square))
                             1 1))
                     highlight-square-list
                     ))
@@ -167,7 +167,7 @@
             (send engine-state set-state 'waiting-for-input))
           
           (if (send clicked-square square-eq? sourcesquare)
-              start-over
+              (start-over)
               (let ((clicked-move (make-object move% sourcesquare clicked-square)))
                 (if (send position legal-move? clicked-move)
                     (begin
