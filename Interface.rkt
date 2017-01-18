@@ -2,7 +2,7 @@
 
 (require "Mechanics.rkt" "Setup.rkt" "Engine.rkt")
 
-(define ascii-chess%
+(define ascii-interface%
   (class object%
     (super-new)
     
@@ -10,8 +10,8 @@
       (map (lambda (row)
              (map (lambda (column)
                     (send pos occupied? (make-object square% column row)))
-                  (enumerate-interval FIRSTCOLUMN LASTCOLUMN)))
-           (enumerate-interval FIRSTROW LASTROW)))
+                  (range FIRSTCOLUMN (add1 LASTCOLUMN))))
+           (range FIRSTROW (add1 LASTROW))))
     
     (define (display-board pos)
       (for-each (lambda (row)
@@ -47,7 +47,7 @@
     ))
 
 
-(define gui-chess%
+(define gui-interface%
   (class object%
     (super-new)
     
@@ -58,7 +58,7 @@
          (define state begin-state)
          (super-new)
          
-         (define/public (set-state input-state)
+         (define/public (set-state! input-state)
            (cond ((or (eq? input-state 'waiting-for-input) 
                       (eq? input-state 'waiting-for-destsquare)
                       (eq? input-state 'finding-bestmove)
@@ -109,8 +109,8 @@
              (for-each
               (lambda (col)
                 (send dc draw-rectangle (sub1 (+ (remainder row 2) (* 2 col))) row 1.02 1.02))
-              (enumerate-interval 0 4)))
-           (enumerate-interval 0 7)))
+              (range 0 5)))
+           (range 0 8)))
         
         (define (mouse-x->column mouse-x)
           (floor (add1 (* (/ mouse-x (get-width)) 8))))
@@ -118,53 +118,61 @@
         (define (mouse-y->row mouse-y)
           (floor (- 10 (* (/ mouse-y (get-height)) 8))))
         
-        (define highlight-square-list '())
+
+        (define highlighted-squares
+          (new
+           (class object%
+             (super-new)
+             
+             (define highlight-square-list '())
+                     
+             (define/public (highlight-square col row)
+               (add-highlight-square (make-object square% col row)))
         
-        (define (add-highlight-square square)
-          (set! highlight-square-list (cons square highlight-square-list))
-          )
+             (define (add-highlight-square square)
+               (set! highlight-square-list (cons square highlight-square-list))
+               )
         
-        (define (clear-highlight-square-list)
-          (set! highlight-square-list '()))
+             (define/public (clear-highlight-square-list)
+               (set! highlight-square-list '()))
         
-        (define (draw-highlight-square-list dc)
-          (send dc set-pen "black" LINEWIDTH 'solid)
-          (send dc set-brush "LemonChiffon" 'solid)
-          (for-each (lambda (square)
-                      (send dc draw-rectangle
-                            (- (get-field col square) FIRSTCOLUMN)
-                            (- LASTROW (get-field row square))
-                            1 1))
-                    highlight-square-list
-                    ))
-        
-        (define (highlight-square col row)
-          (add-highlight-square (make-object square% col row)))
+             (define/public (draw-highlight-square-list dc)
+               (send dc set-pen "black" LINEWIDTH 'solid)
+               (send dc set-brush "LemonChiffon" 'solid)
+               (for-each (lambda (square)
+                           (send dc draw-rectangle
+                                 (- (get-field col square) FIRSTCOLUMN)
+                                 (- LASTROW (get-field row square))
+                                 1 1))
+                         highlight-square-list
+                         ))
+
+             )))
         
         (define (select-source-square clicked-square col row)
           (if (send position friendly? clicked-square)
               (begin
                 (set! sourcesquare clicked-square)
-                (highlight-square col row) 
-                (send engine-state set-state 'waiting-for-destsquare))
+                (send highlighted-squares highlight-square col row) 
+                (send engine-state set-state! 'waiting-for-destsquare))
               (eprintf "click friendly square")))
         
         (define (select-destination-square clicked-square col row)
           
           (define (start-over)
-            (clear-highlight-square-list)
-            (send engine-state set-state 'waiting-for-input))
+            (send highlighted-squares clear-highlight-square-list)
+            (send engine-state set-state! 'waiting-for-input))
           
           (define (execute-input-move clicked-move)
-            (highlight-square col row)
+            (send highlighted-squares highlight-square col row)
             (set! position (send position changed-pos clicked-move))
-            (send engine-state set-state 'finding-bestmove)
+            (send engine-state set-state! 'finding-bestmove)
             (refresh-now))
           
           (define (execute-engine-best-move)
-            (clear-highlight-square-list)
+            (send highlighted-squares clear-highlight-square-list)
             (set! position (send position changed-pos (bestmove position)))
-            (send engine-state set-state 'waiting-for-input))
+            (send engine-state set-state! 'waiting-for-input))
           
           (if (send clicked-square square-eq? sourcesquare)
               (start-over)
@@ -195,7 +203,7 @@
           (define y-scale (/ (get-height) 8))
           (send dc set-scale x-scale y-scale)
           (draw-board dc)
-          (draw-highlight-square-list dc)
+          (send highlighted-squares draw-highlight-square-list dc)
           (draw-white-pieces position dc)
           (draw-black-pieces position dc)
           (send main-window set-status-text
@@ -248,6 +256,6 @@
     (send main-window show #t)
     ))
 
-(new gui-chess%)
-;(new ascii-chess%)
+(new gui-interface%)
+;(new ascii-interface%)
 
