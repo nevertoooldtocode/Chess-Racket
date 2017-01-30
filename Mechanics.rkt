@@ -4,12 +4,26 @@
 
 (module+ test
   (require rackunit)
-  (define e5 (new square% [col 5] [row 6]))
+  (define EMPTYPOSITION (FEN->position "8/8/8/8/8/8/8/8 w KQkq - 0 1"))
+  
+  (define e1 (new square% [col 5] [row 2]))
   (define e2 (new square% [col 5] [row 3]))
+  (define e3 (new square% [col 5] [row 4]))
+  (define e4 (new square% [col 5] [row 5]))
+  (define e5 (new square% [col 5] [row 6]))
+  (define e6 (new square% [col 5] [row 7]))
   (define e7 (new square% [col 5] [row 8]))
-  (define dummysquare (make-object square% (sub1 FIRSTCOLUMN) (sub1 FIRSTROW)))
-  (define EMPTYPOSITION (make-object position% '() 'white 'KQkq dummysquare 0 1))
+  (define e8 (new square% [col 5] [row 9]))
   )
+
+; Constants
+
+(define FIRSTROW 2)
+(define LASTROW 9)
+(define FIRSTCOLUMN 1)
+(define LASTCOLUMN 8)
+(define ASCIICODE-A 97)
+(define ASCIICODE-1 49)
 
 ; General helper functions
 
@@ -20,11 +34,6 @@
   (cond ((null? sequence) (proc sequence))
         ((predicate? (car sequence)) (proc (car sequence)))
         (else (find-first predicate? proc (cdr sequence)))))
-
-(define (enumerate-interval m n)
-  (if (> m n)
-      '()
-      (cons m (enumerate-interval (+ m 1) n))))
 
 (define (random-ref sequence)
   (list-ref sequence (random (length sequence))))
@@ -41,16 +50,88 @@
                   (cdr remaining-elements)))))
   (iter "" sequence))
 
+; String Conversion Routines
+
+(define (string->square string-square)
+  (let ((col (- (char->integer (string-ref string-square 0)) (- ASCIICODE-A FIRSTCOLUMN)))
+        (row (- (char->integer (string-ref string-square 1)) (- ASCIICODE-1 FIRSTROW))))
+;    (printf "col: ~a, row: ~a\n" col row)
+    (make-object square% col row)))
+
 (module+ test
-  (check-equal? (print-list (list e5 e5)) "e5, e5"))
+  (check-equal? (send (string->square "a1") print) "a1")
+  )
 
-; Constants
+(define (FEN->position FEN-string)
+  
+  (define ASCII-PIECE-TABLE
+    `((#\P ,pawn% white)
+      (#\N ,knight% white)
+      (#\B ,bishop% white)
+      (#\R ,rook% white)
+      (#\Q ,queen% white)
+      (#\K ,king% white)
+      (#\p ,pawn% black)
+      (#\n ,knight% black)
+      (#\b ,bishop% black)
+      (#\r ,rook% black)
+      (#\q ,queen% black)
+      (#\k ,king% black)))
+  
+  (let*
+      ((FEN-list (string-split FEN-string))
+       (FEN-piece-placement (first FEN-list))
+       (FEN-side-to-move (second FEN-list))
+       (FEN-castling-ability (third FEN-list))
+       (FEN-ep-target-square (fourth FEN-list))
+       (FEN-halfmove-clock (fifth FEN-list))
+       (FEN-fullmove-counter (sixth FEN-list))
+       (FEN-piece-placement-rows (string-split FEN-piece-placement "/")))
+    
+    (define (resolve-piece-placement pp-list)
+      (foldr (lambda (row row-number result)
+               (append result (resolve-piece-placement-row row row-number)))
+             '()
+             pp-list
+             (reverse (range FIRSTROW (add1 LASTROW)))))
+    
+    (define (resolve-piece-placement-row row row-number)
+      (define (iter result rest col)
+        (if (null? rest)
+            result
+            (let ((char (car rest)))
+              (if (char-alphabetic? char)
+                  (iter (append result (list (resolve-character char col row-number))) (cdr rest) (add1 col))
+                  (iter result (cdr rest) (+ (- (char->integer char) 48) col))))))
+      (iter '() (string->list row) FIRSTCOLUMN))
+    
+    
+    (define (resolve-character char col row-number)
+      (let* ((piece (assoc char ASCII-PIECE-TABLE))
+             (class (second piece))
+             (color (third piece)))
+        (make-object class color (make-object square% col row-number))))
+    
+    (define (resolve-side-to-move side-to-move)
+      (if (string=? side-to-move "w")
+          'white
+          'black))
+    
+    
+    (make-object position%
+      (resolve-piece-placement FEN-piece-placement-rows)
+      (resolve-side-to-move FEN-side-to-move)
+      FEN-castling-ability
+      FEN-ep-target-square
+      FEN-halfmove-clock
+      FEN-fullmove-counter)
+    ))
 
-(define FIRSTROW 2)
-(define LASTROW 9)
-(define FIRSTCOLUMN 1)
-(define LASTCOLUMN 8)
-
+(module+ test
+  (define FEN-startposition "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+  (check-equal? (send (FEN->position FEN-startposition) print)
+                "Ra1, Nb1, Bc1, Qd1, Ke1, Bf1, Ng1, Rh1, Pa2, Pb2, Pc2, Pd2, Pe2, Pf2, Pg2, Ph2, Pa7, Pb7, Pc7, Pd7, Pe7, Pf7, Pg7, Ph7, ra8, nb8, bc8, qd8, ke8, bf8, ng8, rh8, white to move")
+  )
 
 ; Classes
 
@@ -58,9 +139,6 @@
   (class object%
     (super-new)
     (init-field col row)
-    
-    (define ASCIICODE-A 96)
-    (define ASCIICODE-1 47)
     
     (define/public (square-eq?  square)
       (and (= row (get-field row square))
@@ -78,8 +156,8 @@
         (+ row (cdr direction))))
     
     (define/public (print)
-      (~a (integer->char (+ ASCIICODE-A col))
-          (integer->char (+ ASCIICODE-1 row))))   
+      (~a (integer->char (+ ASCIICODE-A (- col FIRSTCOLUMN)))
+          (integer->char (+ ASCIICODE-1 (- row FIRSTROW)))))   
     ))
 
 

@@ -96,8 +96,9 @@
         (make-object king% 'black e8) (make-object bishop% 'black f8)
         (make-object knight% 'black g8) (make-object rook% 'black h8)))
 
-(define STARTPOSITION
-  (make-object position% STARTPIECES 'white 'KQkq dummysquare 0 1))
+(define FEN-startposition "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+(define STARTPOSITION (FEN->position FEN-startposition))
+;  (make-object position% STARTPIECES 'white 'KQkq dummysquare 0 1))
 
 ; Test
 
