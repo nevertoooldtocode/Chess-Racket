@@ -3,14 +3,16 @@
 (provide (all-defined-out))
 
 (module+ test
-  (require rackunit)
+  (require rackunit "Engine.rkt")
   (define EMPTYPOSITION (FEN->position "8/8/8/8/8/8/8/8 w KQkq - 0 1"))
+  (define FEN-startposition "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+  (define STARTPOSITION (FEN->position FEN-startposition))
   
   (define e1 (new square% [col 5] [row 2]))
   (define e2 (new square% [col 5] [row 3]))
   (define e3 (new square% [col 5] [row 4]))
   (define e4 (new square% [col 5] [row 5]))
-  (define e5 (new square% [col 5] [row 6]))
+  (define e5 (string->square "e5"))
   (define e6 (new square% [col 5] [row 7]))
   (define e7 (new square% [col 5] [row 8]))
   (define e8 (new square% [col 5] [row 9]))
@@ -35,9 +37,6 @@
         ((predicate? (car sequence)) (proc (car sequence)))
         (else (find-first predicate? proc (cdr sequence)))))
 
-(define (random-ref sequence)
-  (list-ref sequence (random (length sequence))))
-
 (define (print-list sequence)
   (define (iter result remaining-elements)
     (if (null? remaining-elements)
@@ -55,12 +54,20 @@
 (define (string->square string-square)
   (let ((col (- (char->integer (string-ref string-square 0)) (- ASCIICODE-A FIRSTCOLUMN)))
         (row (- (char->integer (string-ref string-square 1)) (- ASCIICODE-1 FIRSTROW))))
-;    (printf "col: ~a, row: ~a\n" col row)
+    ;    (printf "col: ~a, row: ~a\n" col row)
     (make-object square% col row)))
 
 (module+ test
   (check-equal? (send (string->square "a1") print) "a1")
   )
+
+(define (string->move string-move)
+  (let ([source-square (string->square (substring string-move 0 2))]
+        [dest-square (string->square (substring string-move 2 4))])
+    (make-object move% source-square dest-square)))
+
+(module+ test
+  (check-equal? (send (string->move "e2e4") print) "e2-e4"))
 
 (define (FEN->position FEN-string)
   
@@ -128,7 +135,6 @@
     ))
 
 (module+ test
-  (define FEN-startposition "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
   (check-equal? (send (FEN->position FEN-startposition) print)
                 "Ra1, Nb1, Bc1, Qd1, Ke1, Bf1, Ng1, Rh1, Pa2, Pb2, Pc2, Pd2, Pe2, Pf2, Pg2, Ph2, Pa7, Pb7, Pc7, Pd7, Pe7, Pf7, Pg7, Ph7, ra8, nb8, bc8, qd8, ke8, bf8, ng8, rh8, white to move")
   )
@@ -586,5 +592,77 @@
       (format "~a, ~a to move" (print-list piece-list) (~a colortomove)))    
     ))
 
+(define state%
+  (class object%
+    (super-new)
+    (init-field state-list)
 
+    (define state (car state-list))
 
+    (define/public (set-state! state-value)
+      (if (memq state-value state-list)
+          (set! state state-value)
+          (eprintf "state -- unknown value ~a" state-value)))
+
+    (define/public (get-state) state)
+    ))
+
+(module+ test
+  (define test-state (make-object state% '(a b c)))
+  (check-equal? (send test-state get-state) 'a)
+  (send test-state set-state! 'b)
+  (check-equal? (send test-state get-state) 'b))
+
+(define game%
+  (class object%
+    (super-new)
+    (init-field start-position
+                engine
+                (white-player 'human)
+                (black-player 'engine))
+
+    (define current-position start-position)
+    (define move-list '())
+    (define game-state (make-object state% '(waiting-for-human
+                                             waiting-for-engine
+                                             end-of-game)))
+
+    (define/public (get-move-list)
+      (print-list (reverse move-list)))
+
+    (define/public (get-engine-move)
+      (let ([move (send engine get-move current-position)])
+        (add-move! move)
+        (set! current-position
+              (send current-position changed-pos move))
+        (send game-state set-state! 'waiting-for-human)
+        move
+        ))
+
+    (define/public (accept-human-move move)
+      (add-move! move)
+      (set! current-position
+            (send current-position changed-pos move))
+      (send game-state set-state! 'waiting-for-engine)
+      )
+
+    (define/public (get-current-position) current-position)
+
+    (define/public (get-game-state) (send game-state get-state))
+
+    (define (add-move! move)
+      (set! move-list (cons move move-list)))
+
+    ))
+
+(module+ test
+  (define test-game (make-object game% STARTPOSITION (new engine%)))
+  (check-equal? (send test-game get-game-state) 'waiting-for-human)
+  (check-equal? (send test-game get-move-list) "")
+  (send test-game accept-human-move (string->move "e2e4"))
+  (check-equal? (send test-game get-game-state) 'waiting-for-engine)
+  (check-equal? (send test-game get-move-list) "e2-e4")
+  (send test-game accept-human-move (string->move "e7e5"))
+  (check-equal? (send test-game get-game-state) 'waiting-for-engine)
+  (check-equal? (send test-game get-move-list) "e2-e4, e7-e5")
+  )

@@ -5,6 +5,9 @@
 (define ascii-interface%
   (class object%
     (super-new)
+
+    (define engine (new engine%))
+    (define game (make-object game% STARTPOSITION engine))
     
     (define (make-board pos) ; creates a list of 8 row-lists representing the playing area
       (map (lambda (row)
@@ -21,53 +24,41 @@
                                   (display (send piece ascii-representation))))
                             row)
                   (newline))
-                (reverse (make-board pos))))
+                (reverse (make-board pos)))
+      (newline))
     
-    (define (inputmove)
-      (read))
-    
-    (define (game startpos)
-      (display-board startpos)(newline)
-      (define (do-move pos)
-        
-        (define engineturn?
-          (eq? (get-field colortomove pos) (get-field colortomove startpos)))
-        
-        (cond ((send pos endofgame?) true)
-              (engineturn? (let ((newpos (send pos changed-pos (bestmove pos))))
-                             (display-board newpos)(newline)
-                             (do-move newpos)))
-              (else (let ((newpos (send pos changed-pos (inputmove))))
-                      (display-board newpos)(newline)
-                      (do-move newpos)))))
-      
-      (do-move startpos))
-    
-    (game STARTPOSITION)
+    (define (input-move)
+      (string->move (read-line)))
+
+    (define (game-iter)
+      (display-board (send game get-current-position))
+      (let ([game-state (send game get-game-state)])
+      (cond [(not (eq? game-state 'end-of-game))
+             (cond [(eq? game-state 'waiting-for-human)
+                    (send game accept-human-move (input-move))]
+                   [(eq? game-state 'waiting-for-engine)
+                    (send game get-engine-move)]
+                   [else (eprintf "unknown game-state ~a\n" game-state)])
+             (game-iter)])))
+
+    (game-iter)
+
     ))
 
 
 (define gui-interface%
   (class object%
     (super-new)
+
+    (define engine (new engine%))
     
     (define engine-state
-      (new
-       (class object%
-         (init [begin-state 'waiting-for-input])
-         (define state begin-state)
-         (super-new)
-         
-         (define/public (set-state! input-state)
-           (cond ((or (eq? input-state 'waiting-for-input) 
-                      (eq? input-state 'waiting-for-destsquare)
-                      (eq? input-state 'finding-bestmove)
-                      (eq? input-state 'end-of-game))
-                  (set! state input-state))
-                 (else (eprintf "engine-state --- ~v unknown state" input-state))))
-         
-         (define/public (get-state) state))))
-    
+      (make-object state%
+        '(waiting-for-input
+          waiting-for-destsquare
+          finding-bestmove
+          end-of-game)))
+                  
     (define board-canvas% ; Standard graph coordinates; 0-8, origin upper left. So e4 is (4.5 4.5)
       (class canvas%
         (inherit get-dc get-width get-height refresh-now)
@@ -171,7 +162,7 @@
           
           (define (execute-engine-best-move)
             (send highlighted-squares clear-highlight-square-list)
-            (set! position (send position changed-pos (bestmove position)))
+            (set! position (send position changed-pos (send engine get-move position)))
             (send engine-state set-state! 'waiting-for-input))
           
           (if (send clicked-square square-eq? sourcesquare)
@@ -256,6 +247,6 @@
     (send main-window show #t)
     ))
 
-(new gui-interface%)
-;(new ascii-interface%)
+;(new gui-interface%)
+(new ascii-interface%)
 
