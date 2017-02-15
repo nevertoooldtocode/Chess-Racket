@@ -454,7 +454,7 @@
     
     (define/override (ascii-representation)
       (cond ((eq? color 'white) "P")
-            ((eq? color 'black) "P")
+            ((eq? color 'black) "p")
             (else (error "ascii-representation -- unknown type"))))    
     ))
 

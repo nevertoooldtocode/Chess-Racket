@@ -33,13 +33,13 @@
     (define (game-iter)
       (display-board (send game get-current-position))
       (let ([game-state (send game get-game-state)])
-      (cond [(not (eq? game-state 'end-of-game))
-             (cond [(eq? game-state 'waiting-for-human)
-                    (send game accept-human-move (input-move))]
-                   [(eq? game-state 'waiting-for-engine)
-                    (send game get-engine-move)]
-                   [else (eprintf "unknown game-state ~a\n" game-state)])
-             (game-iter)])))
+        (cond [(not (eq? game-state 'end-of-game))
+               (cond [(eq? game-state 'waiting-for-human)
+                      (send game accept-human-move (input-move))]
+                     [(eq? game-state 'waiting-for-engine)
+                      (send game get-engine-move)]
+                     [else (eprintf "unknown game-state ~a\n" game-state)])
+               (game-iter)])))
 
     (game-iter)
 
@@ -51,20 +51,19 @@
     (super-new)
 
     (define engine (new engine%))
+    (define game (make-object game% STARTPOSITION engine))
     
-    (define engine-state
+    (define gui-state
       (make-object state%
         '(waiting-for-input
           waiting-for-destsquare
-          finding-bestmove
-          end-of-game)))
+          )))
                   
     (define board-canvas% ; Standard graph coordinates; 0-8, origin upper left. So e4 is (4.5 4.5)
       (class canvas%
         (inherit get-dc get-width get-height refresh-now)
         
         (define LINEWIDTH 0.01)
-        (define position STARTPOSITION)
         (define sourcesquare (make-object square% 0 0))
         
         (define (draw-white-pieces pos dc)
@@ -141,33 +140,34 @@
              )))
         
         (define (select-source-square clicked-square col row)
-          (if (send position friendly? clicked-square)
-              (begin
-                (set! sourcesquare clicked-square)
-                (send highlighted-squares highlight-square col row) 
-                (send engine-state set-state! 'waiting-for-destsquare))
-              (eprintf "click friendly square")))
+          (let ([position (send game get-current-position)])
+            (if (send position friendly? clicked-square)
+                (begin
+                  (set! sourcesquare clicked-square)
+                  (send highlighted-squares highlight-square col row) 
+                  (send gui-state set-state! 'waiting-for-destsquare))
+                (eprintf "click friendly square"))))
         
         (define (select-destination-square clicked-square col row)
           
           (define (start-over)
             (send highlighted-squares clear-highlight-square-list)
-            (send engine-state set-state! 'waiting-for-input))
+            (send gui-state set-state! 'waiting-for-input))
           
           (define (execute-input-move clicked-move)
             (send highlighted-squares highlight-square col row)
-            (set! position (send position changed-pos clicked-move))
-            (send engine-state set-state! 'finding-bestmove)
+            (send game accept-human-move clicked-move)
             (refresh-now))
           
           (define (execute-engine-best-move)
             (send highlighted-squares clear-highlight-square-list)
-            (set! position (send position changed-pos (send engine get-move position)))
-            (send engine-state set-state! 'waiting-for-input))
+            (send game get-engine-move)
+            (send gui-state set-state! 'waiting-for-input))
           
           (if (send clicked-square square-eq? sourcesquare)
               (start-over)
-              (let ((clicked-move (make-object move% sourcesquare clicked-square)))
+              (let ([clicked-move (make-object move% sourcesquare clicked-square)]
+                    [position (send game get-current-position)])
                 (if (send position legal-move? clicked-move)
                     (begin
                       (execute-input-move clicked-move)
@@ -175,31 +175,34 @@
                     (eprintf "click legal square")))))
         
         (define/override (on-event mouse-event)
-          (cond ((send mouse-event button-down?)           
-                 (let* ((col (mouse-x->column (send mouse-event get-x)))
-                        (row (mouse-y->row (send mouse-event get-y)))
-                        (clicked-square (make-object square% col row))
-                        (state (send engine-state get-state)))
-                   (cond ((eq? state 'waiting-for-input)
-                          (select-source-square clicked-square col row))
-                         ((eq? state 'waiting-for-destsquare)
-                          (select-destination-square clicked-square col row))
-                         (else void))))
-                (else void))
+          (cond [(send mouse-event button-down?)           
+                 (let* ([col (mouse-x->column (send mouse-event get-x))]
+                        [row (mouse-y->row (send mouse-event get-y))]
+                        [clicked-square (make-object square% col row)]
+                        [state (send gui-state get-state)])
+                   (cond [(eq? state 'waiting-for-input)
+                          (select-source-square clicked-square col row)]
+                         [(eq? state 'waiting-for-destsquare)
+                          (select-destination-square clicked-square col row)]
+                         [else (void)]))]
+                [else (void)])
           (refresh-now))
         
         (define/override (on-paint)
-          (define dc (get-dc))
-          (define x-scale (/ (get-width) 8))
-          (define y-scale (/ (get-height) 8))
-          (send dc set-scale x-scale y-scale)
-          (draw-board dc)
-          (send highlighted-squares draw-highlight-square-list dc)
-          (draw-white-pieces position dc)
-          (draw-black-pieces position dc)
-          (send main-window set-status-text
-                (format "status: ~a" (send engine-state get-state)))
-          )
+          (let ([dc (get-dc)]
+                [x-scale (/ (get-width) 8)]
+                [y-scale (/ (get-height) 8)]
+                [position (send game get-current-position)])
+            (send dc set-scale x-scale y-scale)
+            (draw-board dc)
+            (send highlighted-squares draw-highlight-square-list dc)
+            (draw-white-pieces position dc)
+            (draw-black-pieces position dc)
+            (send main-window set-status-text
+                  (format "gui-status: ~a, game-status: ~a"
+                          (send gui-state get-state)
+                          (send game get-game-state)))
+            ))
         
         (super-new)))  
     
@@ -241,12 +244,10 @@
     
     (new chess-menu%)
     (send main-window create-status-line)
-    (send main-window set-status-text
-          (format "status: ~a" (send engine-state get-state)))
     
     (send main-window show #t)
     ))
 
-;(new gui-interface%)
-(new ascii-interface%)
+(new gui-interface%)
+;(new ascii-interface%)
 
